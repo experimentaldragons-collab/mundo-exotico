@@ -1,0 +1,559 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USUARIOS
+// ============================================
+
+model User {
+  id            String     @id @default(cuid())
+  email         String     @unique
+  username      String     @unique
+  password      String
+  firstName     String?
+  lastName      String?
+  profileImage  String?
+  country       Country?   @relation("UserCountry", fields: [countryId], references: [id])
+  countryId     String?
+  city          String?
+  role          UserRole   @default(USER)
+  status        UserStatus @default(ACTIVE)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  emailVerified Boolean    @default(false)
+
+  // Relaciones
+  seller         Seller?
+  listings       Listing[]
+  favorites      Favorite[]
+  reviews        Review[]
+  sentMessages   Message[]    @relation("SenderMessages")
+  conversations  Conversation[]
+  reports        Report[]     @relation("ReporterReports")
+  reportReviewed Report[]     @relation("ReviewedByReports")
+  orders         Order[]      @relation("BuyerOrders")
+  notifications  Notification[]
+
+  @@index([email])
+  @@index([username])
+  @@index([role])
+  @@index([countryId])
+}
+
+enum UserRole {
+  USER
+  SELLER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+// ============================================
+// VENDEDORES
+// ============================================
+
+model Seller {
+  id                 String   @id @default(cuid())
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId             String   @unique
+  storeName          String
+  storeSlug          String   @unique
+  storeDescription   String?
+  storeImage         String?
+  storeBanner        String?
+  storeLogo          String?
+  country            Country  @relation("SellerCountry", fields: [countryId], references: [id])
+  countryId          String
+  city               String?
+  state              String?
+  status             SellerStatus @default(ACTIVE)
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  rating             Float    @default(0)
+  totalSales         Int      @default(0)
+  responseRate       Float    @default(0)
+  customBranding     Json?
+  socialLinks        Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  // Relaciones
+  listings       Listing[]
+  reviews        Review[]      @relation("SellerReviews")
+  orders         Order[]       @relation("SellerOrders")
+  conversations  Conversation[]
+
+  @@index([countryId])
+  @@index([status])
+  @@index([verificationStatus])
+  @@index([storeSlug])
+}
+
+enum SellerStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  VERIFIED
+  REJECTED
+}
+
+// ============================================
+// PAÍSES
+// ============================================
+
+model Country {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String   @unique
+  currency  String
+  isActive  Boolean  @default(true)
+  orderIndex Int     @default(0)
+  createdAt DateTime @default(now())
+
+  // Relaciones
+  users               User[]   @relation("UserCountry")
+  sellers             Seller[] @relation("SellerCountry")
+  categories          Category[]
+  listings            Listing[]
+  speciesRestrictions SpeciesCountryRestriction[]
+
+  @@index([code])
+  @@index([isActive])
+}
+
+// ============================================
+// CATEGORÍAS
+// ============================================
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String
+  icon        String?
+  description String?
+  parentId    String?
+  parent      Category? @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Category[] @relation("CategoryTree")
+  country     Country  @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  countryId   String
+  isActive    Boolean  @default(true)
+  orderIndex  Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  // Relaciones
+  listings Listing[]
+  species  Species[]
+
+  @@unique([countryId, slug])
+  @@index([countryId])
+  @@index([parentId])
+  @@index([isActive])
+}
+
+// ============================================
+// ESPECIES
+// ============================================
+
+model Species {
+  id             String   @id @default(cuid())
+  category       Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  categoryId     String
+  scientificName String
+  commonName     String
+  description    String?
+  icon           String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  // Relaciones
+  listings        Listing[]
+  restrictions    SpeciesCountryRestriction[]
+
+  @@unique([categoryId, scientificName])
+  @@index([categoryId])
+  @@index([isActive])
+}
+
+model SpeciesCountryRestriction {
+  id         String             @id @default(cuid())
+  species    Species            @relation(fields: [speciesId], references: [id], onDelete: Cascade)
+  speciesId  String
+  country    Country            @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  countryId  String
+  status     RestrictionStatus  @default(ALLOWED)
+  notes      String?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  @@unique([speciesId, countryId])
+  @@index([speciesId])
+  @@index([countryId])
+}
+
+enum RestrictionStatus {
+  ALLOWED
+  RESTRICTED
+  PROHIBITED
+}
+
+// ============================================
+// PUBLICACIONES (LISTINGS)
+// ============================================
+
+model Listing {
+  id            String   @id @default(cuid())
+  seller        Seller   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  sellerId      String
+  category      Category @relation(fields: [categoryId], references: [id])
+  categoryId    String
+  species       Species? @relation(fields: [speciesId], references: [id], onDelete: SetNull)
+  speciesId     String?
+  title         String
+  description   String
+  price         Float
+  currency      String   @default("USD")
+  country       Country  @relation(fields: [countryId], references: [id])
+  countryId     String
+  city          String
+  status        ListingStatus @default(ACTIVE)
+  listingType   ListingType   @default(ANIMAL)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  expiresAt     DateTime?
+  viewCount     Int      @default(0)
+  isFeatured    Boolean  @default(false)
+  approvalStatus ApprovalStatus @default(PENDING)
+  requiresApproval Boolean @default(false)
+
+  // Relaciones
+  details       ListingDetail[]
+  images        ListingImage[]
+  favorites     Favorite[] @relation("FavoriteListing")
+  orders        Order[]
+  messages      Message[]
+  conversations Conversation[]
+  reports       Report[]
+
+  @@index([sellerId])
+  @@index([categoryId])
+  @@index([speciesId])
+  @@index([countryId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([approvalStatus])
+}
+
+enum ListingStatus {
+  ACTIVE
+  RESERVED
+  SOLD
+  WITHDRAWN
+  INACTIVE
+  EXPIRED
+}
+
+enum ListingType {
+  ANIMAL
+  PRODUCT
+  SERVICE
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model ListingDetail {
+  id          String   @id @default(cuid())
+  listing     Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  listingId   String
+  fieldName   String
+  fieldValue  String
+  displayOrder Int    @default(0)
+
+  @@index([listingId])
+}
+
+model ListingImage {
+  id         String   @id @default(cuid())
+  listing    Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  listingId  String
+  imageUrl   String
+  thumbUrl   String?
+  uploadedAt DateTime @default(now())
+  orderIndex Int      @default(0)
+  isPrimary  Boolean  @default(false)
+
+  @@index([listingId])
+}
+
+// ============================================
+// FAVORITOS
+// ============================================
+
+model Favorite {
+  id           String   @id @default(cuid())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  listing      Listing? @relation("FavoriteListing", fields: [listingId], references: [id], onDelete: Cascade)
+  listingId    String?
+  seller       Seller?  @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  sellerId     String?
+  favoriteType FavoriteType
+  createdAt    DateTime @default(now())
+
+  @@unique([userId, listingId, sellerId])
+  @@index([userId])
+  @@index([listingId])
+  @@index([sellerId])
+}
+
+enum FavoriteType {
+  LISTING
+  SELLER
+}
+
+// ============================================
+// ÓRDENES / TRANSACCIONES
+// ============================================
+
+model Order {
+  id             String   @id @default(cuid())
+  buyer          User     @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Cascade)
+  buyerId        String
+  seller         Seller   @relation("SellerOrders", fields: [sellerId], references: [id], onDelete: Cascade)
+  sellerId       String
+  listing        Listing  @relation(fields: [listingId], references: [id], onDelete: Restrict)
+  listingId      String
+  quantity       Int      @default(1)
+  totalPrice     Float
+  commission     Float    @default(0)
+  sellerEarnings Float    @default(0)
+  status         OrderStatus @default(PENDING)
+  paymentMethod  String?
+  paymentStatus  PaymentStatus @default(PENDING)
+  shippingAddress Json?
+  trackingNumber String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  completedAt    DateTime?
+
+  // Relaciones
+  reviews Review?
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([listingId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  PROCESSING
+  DELIVERED
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+// ============================================
+// RESEÑAS
+// ============================================
+
+model Review {
+  id        String   @id @default(cuid())
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId   String   @unique
+  buyer     User     @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  buyerId   String
+  seller    Seller   @relation("SellerReviews", fields: [sellerId], references: [id], onDelete: Cascade)
+  sellerId  String
+  rating    Int      @db.SmallInt
+  comment   String?
+  createdAt DateTime @default(now())
+  status    ReviewStatus @default(ACTIVE)
+  reportCount Int    @default(0)
+
+  @@index([orderId])
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([createdAt])
+}
+
+enum ReviewStatus {
+  ACTIVE
+  HIDDEN
+  REMOVED
+}
+
+// ============================================
+// MENSAJERÍA
+// ============================================
+
+model Conversation {
+  id         String   @id @default(cuid())
+  buyer      User     @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  buyerId    String
+  seller     Seller   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  sellerId   String
+  listing    Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  listingId  String?
+  lastMessageAt DateTime?
+  createdAt  DateTime @default(now())
+  status     ConversationStatus @default(ACTIVE)
+
+  // Relaciones
+  messages Message[]
+
+  @@unique([buyerId, sellerId, listingId])
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([createdAt])
+}
+
+enum ConversationStatus {
+  ACTIVE
+  ARCHIVED
+  BLOCKED
+}
+
+model Message {
+  id              String   @id @default(cuid())
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId  String
+  sender          User     @relation("SenderMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  senderId        String
+  content         String
+  imageUrl        String?
+  relatedListing  Listing? @relation(fields: [relatedListingId], references: [id], onDelete: SetNull)
+  relatedListingId String?
+  createdAt       DateTime @default(now())
+  isRead          Boolean  @default(false)
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+// ============================================
+// REPORTES / MODERACIÓN
+// ============================================
+
+model Report {
+  id          String   @id @default(cuid())
+  reporter    User     @relation("ReporterReports", fields: [reporterId], references: [id], onDelete: Cascade)
+  reporterId  String
+  targetType  ReportTargetType
+  targetId    String
+  listing     Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  listingId   String?
+  reason      ReportReason
+  description String?
+  status      ReportStatus @default(OPEN)
+  resolution  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  reviewedBy  User?    @relation("ReviewedByReports", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedById String?
+
+  @@index([reporterId])
+  @@index([targetType])
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum ReportTargetType {
+  LISTING
+  USER
+  SELLER
+  MESSAGE
+  REVIEW
+}
+
+enum ReportReason {
+  SCAM
+  ILLEGAL_ANIMAL
+  FALSE_INFO
+  INAPPROPRIATE
+  BANNED_PRODUCT
+  SPAM
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  REJECTED
+}
+
+// ============================================
+// NOTIFICACIONES
+// ============================================
+
+model Notification {
+  id         String   @id @default(cuid())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  type       NotificationType
+  title      String
+  message    String
+  relatedId  String?
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime?
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+enum NotificationType {
+  MESSAGE
+  NEW_REVIEW
+  LISTING_SOLD
+  LISTING_EXPIRED
+  ORDER_STATUS
+  SELLER_VERIFICATION
+  REPORT_RESOLVED
+  OTHER
+}
+
+// ============================================
+// CONFIGURACIÓN ADMINISTRATIVA
+// ============================================
+
+model AdminSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  @@index([key])
+}
