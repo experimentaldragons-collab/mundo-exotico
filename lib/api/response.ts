@@ -1,3 +1,6 @@
+import { NextApiRequest, NextApiResponse } from 'next';
+import { Session } from 'next-auth';
+
 export class ApiError extends Error {
   constructor(
     public statusCode: number,
@@ -9,40 +12,14 @@ export class ApiError extends Error {
   }
 }
 
-export const handleApiError = (error: unknown) => {
-  if (error instanceof ApiError) {
-    return {
-      statusCode: error.statusCode,
-      message: error.message,
-      code: error.code,
-    };
-  }
-
-  if (error instanceof Error) {
-    return {
-      statusCode: 500,
-      message: error.message,
-      code: 'INTERNAL_ERROR',
-    };
-  }
-
-  return {
-    statusCode: 500,
-    message: 'Error desconocido',
-    code: 'UNKNOWN_ERROR',
-  };
-};
-
-export const createApiResponse = <T>(
+export function createApiResponse(
   success: boolean,
-  data?: T,
-  error?: string,
+  data?: any,
   message?: string
-) => {
+) {
   return {
     success,
-    ...(data && { data }),
-    ...(error && { error }),
-    ...(message && { message }),
+    data: data || null,
+    message: message || (success ? 'Operación exitosa' : 'Error en la operación'),
   };
-};
+}

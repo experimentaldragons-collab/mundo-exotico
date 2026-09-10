@@ -1,45 +1,57 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { ApiError, handleApiError, createApiResponse } from './response';
+import { Session } from 'next-auth';
+import { ApiError, createApiResponse } from './response';
 
-export async function apiHandler<T>(
-  req: NextApiRequest,
-  res: NextApiResponse,
-  handler: (
-    req: NextApiRequest,
-    res: NextApiResponse
-  ) => Promise<any>
-) {
-  try {
-    const result = await handler(req, res);
-    
-    if (!res.headersSent) {
-      res.status(200).json(createApiResponse(true, result));
-    }
-  } catch (error) {
-    const apiError = handleApiError(error);
-    
-    if (!res.headersSent) {
-      res.status(apiError.statusCode).json(
-        createApiResponse(false, undefined, apiError.message, apiError.code)
-      );
-    }
-  }
+export function validateMethod(req: NextApiRequest, methods: string[]): boolean {
+  return methods.includes(req.method || 'GET');
 }
 
-export const validateMethod = (
+export function requireAuth(session: Session | null): boolean {
+  return !!session?.user;
+}
+
+export async function apiHandler(
   req: NextApiRequest,
-  allowedMethods: string[]
-): boolean => {
-  if (!req.method || !allowedMethods.includes(req.method)) {
-    return false;
+  res: NextApiResponse,
+  handler: () => Promise<any>
+) {
+  try {
+    const result = await handler();
+    return res.status(200).json(createApiResponse(true, result));
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return res
+        .status(error.statusCode)
+        .json(
+          createApiResponse(
+            false,
+            { code: error.code },
+            error.message
+          )
+        );
+    }
+
+    if (error instanceof SyntaxError) {
+      return res
+        .status(400)
+        .json(
+          createApiResponse(
+            false,
+            undefined,
+            'JSON inválido'
+          )
+        );
+    }
+
+    console.error('API Error:', error);
+    return res
+      .status(500)
+      .json(
+        createApiResponse(
+          false,
+          undefined,
+          'Error interno del servidor'
+        )
+      );
   }
-  return true;
-};
-
-export const requireAuth = (session: any): boolean => {
-  return !!session?.user?.id;
-};
-
-export const requireRole = (session: any, roles: string[]): boolean => {
-  return requireAuth(session) && roles.includes(session.user.role);
-};
+}
