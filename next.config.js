@@ -3,12 +3,20 @@ const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
   images: {
-    domains: ['localhost', 'res.cloudinary.com'],
-    formats: ['image/avif', 'image/webp'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**.cloudinary.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '**.s3.amazonaws.com',
+      },
+    ],
   },
   headers: async () => [
     {
-      source: '/api/:path*',
+      source: '/:path*',
       headers: [
         {
           key: 'X-Content-Type-Options',
@@ -16,11 +24,27 @@ const nextConfig = {
         },
         {
           key: 'X-Frame-Options',
-          value: 'DENY',
+          value: 'SAMEORIGIN',
+        },
+        {
+          key: 'X-XSS-Protection',
+          value: '1; mode=block',
         },
       ],
     },
   ],
+  redirects: async () => [
+    {
+      source: '/admin',
+      destination: '/admin/dashboard',
+      permanent: false,
+    },
+  ],
+  rewrites: async () => ({
+    beforeFiles: [],
+    afterFiles: [],
+    fallback: [],
+  }),
 };
 
 module.exports = nextConfig;
